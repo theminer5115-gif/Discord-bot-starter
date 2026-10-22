@@ -1,15 +1,18 @@
-# [Project name]
+# Discord Bot Starter
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A TypeScript Discord bot starter with slash commands, secure token configuration, and a persistent bot workflow.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/discord-bot run dev` — run the Discord bot
+- `pnpm --filter @workspace/discord-bot run typecheck` — check the bot package
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required secret: `DISCORD_BOT_TOKEN`
+- Optional env: `DISCORD_GUILD_ID` — register starter slash commands to a test server for immediate availability; otherwise commands are registered globally
 
 ## Stack
 
@@ -22,15 +25,17 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `bots/discord-bot/src` — Discord client, slash command handlers, and command registration
+- `bots/discord-bot/README.md` — Discord application setup and operating instructions
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The bot runs as a persistent worker rather than a web artifact.
+- Slash command synchronization updates only the starter commands and preserves other commands.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Starter `/ping` and `/about` slash commands.
 
 ## User preferences
 
