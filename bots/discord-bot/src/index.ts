@@ -33,6 +33,7 @@ import {
 const token = process.env.DISCORD_BOT_TOKEN?.trim();
 const guildId = process.env.DISCORD_GUILD_ID?.trim();
 const voiceChannelId = process.env.DISCORD_HELP_VOICE_CHANNEL_ID?.trim();
+const helpRequestChannelId = process.env.DISCORD_HELP_REQUEST_CHANNEL_ID?.trim();
 const staffChannelId = process.env.DISCORD_STAFF_CHANNEL_ID?.trim();
 const HELP_COOLDOWN_MS = 10_000;
 const helpCooldowns = new Map<string, number>();
@@ -43,9 +44,9 @@ if (!token) {
   );
 }
 
-if (!voiceChannelId || !staffChannelId) {
+if (!voiceChannelId || !helpRequestChannelId || !staffChannelId) {
   throw new Error(
-    "Missing Discord channel configuration. Set DISCORD_HELP_VOICE_CHANNEL_ID and DISCORD_STAFF_CHANNEL_ID.",
+    "Missing Discord channel configuration. Set DISCORD_HELP_VOICE_CHANNEL_ID, DISCORD_HELP_REQUEST_CHANNEL_ID, and DISCORD_STAFF_CHANNEL_ID.",
   );
 }
 
@@ -407,13 +408,26 @@ async function handleHelpRequestButton(interaction: ButtonInteraction) {
 
 async function initializeChannels() {
   const voiceChannel = await client.channels.fetch(voiceChannelId!);
+  const helpRequestChannel = await client.channels.fetch(helpRequestChannelId!);
   const staffChannel = await getStaffChannel();
 
   if (!voiceChannel?.isVoiceBased()) {
     throw new Error("המזהה שהוגדר לערוץ הקולי אינו מצביע על ערוץ קולי.");
   }
-  if (staffChannel.guildId !== voiceChannel.guildId) {
-    throw new Error("ערוץ הקול וערוץ הצוות חייבים להיות באותו שרת.");
+  if (
+    !helpRequestChannel?.isTextBased() ||
+    !("guildId" in helpRequestChannel) ||
+    typeof helpRequestChannel.guildId !== "string"
+  ) {
+    throw new Error("המזהה שהוגדר לחדר !h אינו מצביע על חדר טקסט בשרת.");
+  }
+  if (
+    helpRequestChannel.guildId !== voiceChannel.guildId ||
+    staffChannel.guildId !== voiceChannel.guildId
+  ) {
+    throw new Error(
+      "חדר !h, ערוץ הקול וחדר הצוות חייבים להיות באותו שרת.",
+    );
   }
 
   const activeMemberIds = [...voiceChannel.members.values()]
@@ -492,6 +506,13 @@ client.on("messageCreate", async (message) => {
   }
 
   if (/^!h(?:\s|$)/i.test(message.content)) {
+    if (message.channelId !== helpRequestChannelId) {
+      await message.reply({
+        content: `אפשר להגיש בקשת עזרה רק בחדר <#${helpRequestChannelId}>.`,
+        allowedMentions: { repliedUser: false },
+      });
+      return;
+    }
     await handleHelpRequest(message);
   }
 });

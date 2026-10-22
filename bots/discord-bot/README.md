@@ -12,9 +12,10 @@ stats, XP, and `/rank`.
 3. Invite the bot using the OAuth2 URL generator with the `bot` and
    `applications.commands` scopes. Grant only the required permissions:
    View Channels, Send Messages, Embed Links, and Use Application Commands.
-4. Add the bot token as the Replit Secret `DISCORD_BOT_TOKEN`. The channel IDs
-   are configured with `DISCORD_HELP_VOICE_CHANNEL_ID` and
-   `DISCORD_STAFF_CHANNEL_ID`.
+4. Add the bot token as the Replit Secret `DISCORD_BOT_TOKEN`. Configure three
+   separate channels: `DISCORD_HELP_REQUEST_CHANNEL_ID` for `!h`,
+   `DISCORD_HELP_VOICE_CHANNEL_ID` for voice monitoring, and
+   `DISCORD_STAFF_CHANNEL_ID` for staff alerts.
 5. Start the **Discord Bot** workflow, or run:
 
    ```sh
@@ -27,7 +28,8 @@ stats are stored in the project's PostgreSQL database.
 
 ## Commands
 
-- `!h [פרטים]` — sends a Hebrew help embed to the configured staff channel,
+- `!h [פרטים]` — works only in the configured help-request text channel and
+  sends a Hebrew help embed to the configured staff channel,
   mentions online staff, and enforces a 10-second per-user cooldown.
 - `/rank` — privately shows a member's message count, monitored voice time, XP,
   and level.
