@@ -24,11 +24,25 @@ import {
   getHelpRequest,
   getMemberRankStats,
   type HelpRequest,
+  type HelpRequestEscalation,
   LEADERBOARD_LIMIT,
+  pingHelpRequestRole,
   recordMessage,
+  rollbackHelpRequestRolePing,
   resetVoiceSessions,
   startVoiceSession,
 } from "./stats.js";
+
+function readRequiredRoleIds(environmentKey: string) {
+  const roleIds = (process.env[environmentKey] ?? "")
+    .split(",")
+    .map((roleId) => roleId.trim())
+    .filter(Boolean);
+  if (roleIds.length === 0 || roleIds.some((roleId) => !/^\d{17,20}$/.test(roleId))) {
+    throw new Error(`מזהי התפקידים ב־${environmentKey} חסרים או אינם תקינים.`);
+  }
+  return [...new Set(roleIds)];
+}
 
 const token = process.env.DISCORD_BOT_TOKEN?.trim();
 const guildId = process.env.DISCORD_GUILD_ID?.trim();
@@ -36,6 +50,9 @@ const voiceChannelId = process.env.DISCORD_HELP_VOICE_CHANNEL_ID?.trim();
 const helpRequestChannelId = process.env.DISCORD_HELP_REQUEST_CHANNEL_ID?.trim();
 const helpAlertChannelId = process.env.DISCORD_HELP_ALERT_CHANNEL_ID?.trim();
 const voiceAlertChannelId = process.env.DISCORD_VOICE_ALERT_CHANNEL_ID?.trim();
+const baseAlertRoleIds = readRequiredRoleIds("DISCORD_BASE_ALERT_ROLE_IDS");
+const adminRoleIds = readRequiredRoleIds("DISCORD_ADMIN_ROLE_IDS");
+const ownerRoleIds = readRequiredRoleIds("DISCORD_OWNER_ROLE_IDS");
 const HELP_COOLDOWN_MS = 10_000;
 const helpCooldowns = new Map<string, number>();
 
@@ -247,6 +264,16 @@ function buildHelpRequestEmbed(request: HelpRequest) {
         value: request.claimedBy ? `<@${request.claimedBy}>` : "עדיין לא נלקחה",
         inline: true,
       },
+      {
+        name: "התראת מנהלים",
+        value: request.adminPingedAt ? "נשלחה" : "לא נשלחה",
+        inline: true,
+      },
+      {
+        name: "התראת בעלים",
+        value: request.ownerPingedAt ? "נשלחה" : "לא נשלחה",
+        inline: true,
+      },
     );
 
   if (request.sourceMessageUrl) {
@@ -278,7 +305,23 @@ function buildHelpRequestButtons(request: HelpRequest) {
       .setLabel("סגירת בקשה")
       .setStyle(ButtonStyle.Danger)
       .setDisabled(request.status === "closed"),
+    new ButtonBuilder()
+      .setCustomId(`help-request:admin:${request.requestId}`)
+      .setLabel("הזעקת מנהלים")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(request.status === "closed" || request.adminPingedAt !== null),
+    new ButtonBuilder()
+      .setCustomId(`help-request:owner:${request.requestId}`)
+      .setLabel("הזעקת בעלים")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(request.status === "closed" || request.ownerPingedAt !== null),
   );
+}
+
+function getRequestAlertChannel(request: HelpRequest) {
+  return request.requestType === "voice"
+    ? getVoiceAlertChannel()
+    : getHelpAlertChannel();
 }
 
 async function sendHelpRequestAlert(input: {
@@ -299,18 +342,15 @@ async function sendHelpRequestAlert(input: {
   });
 
   try {
-    const alertChannel =
-      request.requestType === "voice"
-        ? await getVoiceAlertChannel()
-        : await getHelpAlertChannel();
+    const alertChannel = await getRequestAlertChannel(request);
     if (alertChannel.guildId !== request.guildId) {
       throw new Error("ההתראה נשלחה מערוץ שאינו שייך לשרת המוגדר.");
     }
     await alertChannel.send({
-      content: "@here",
+      content: baseAlertRoleIds.map((roleId) => `<@&${roleId}>`).join(" "),
       embeds: [buildHelpRequestEmbed(request)],
       components: [buildHelpRequestButtons(request)],
-      allowedMentions: { parse: ["everyone"] },
+      allowedMentions: { parse: [], roles: baseAlertRoleIds },
     });
   } catch (error) {
     await deleteHelpRequest(request.requestId).catch((deleteError) => {
@@ -366,9 +406,89 @@ async function handleHelpRequest(message: Message) {
   }
 }
 
+async function handleRoleEscalationButton(
+  interaction: ButtonInteraction,
+  requestId: string,
+  escalation: HelpRequestEscalation,
+) {
+  await interaction.deferUpdate();
+  const updatedRequest = await pingHelpRequestRole(
+    requestId,
+    interaction.guildId!,
+    escalation,
+  );
+  const currentRequest = updatedRequest ?? (await getHelpRequest(requestId));
+
+  if (!currentRequest) {
+    await interaction.followUp({
+      content: "בקשת העזרה לא נמצאה.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const roleIds = escalation === "admin" ? adminRoleIds : ownerRoleIds;
+  const groupName = escalation === "admin" ? "המנהלים" : "הבעלים";
+
+  if (updatedRequest) {
+    try {
+      const alertChannel = await getRequestAlertChannel(updatedRequest);
+      await alertChannel.send({
+        content: `${roleIds.map((roleId) => `<@&${roleId}>`).join(" ")}\nבקשת עזרה דורשת כעת טיפול של ${groupName}.`,
+        allowedMentions: { parse: [], roles: roleIds },
+      });
+    } catch (error) {
+      await rollbackHelpRequestRolePing(updatedRequest, escalation);
+      const retryRequest = await getHelpRequest(requestId);
+      if (retryRequest) {
+        await interaction.editReply({
+          embeds: [buildHelpRequestEmbed(retryRequest)],
+          components: [buildHelpRequestButtons(retryRequest)],
+          allowedMentions: { parse: [] },
+        });
+      }
+      console.error(`תיגת ${groupName} נכשלה:`, error);
+      await interaction.followUp({
+        content: `לא הצלחתי לתייג את ${groupName}. אפשר לנסות שוב.`,
+        ephemeral: true,
+      });
+      return;
+    }
+  }
+
+  await interaction.editReply({
+    embeds: [buildHelpRequestEmbed(currentRequest)],
+    components: [buildHelpRequestButtons(currentRequest)],
+    allowedMentions: { parse: [] },
+  });
+
+  if (updatedRequest) {
+    await interaction.followUp({
+      content: `נשלחה התראה ל${groupName}.`,
+      ephemeral: true,
+    });
+  } else {
+    const alreadyPinged =
+      escalation === "admin"
+        ? currentRequest.adminPingedAt !== null
+        : currentRequest.ownerPingedAt !== null;
+    await interaction.followUp({
+      content:
+        currentRequest.status === "closed"
+          ? "הבקשה כבר נסגרה, אי אפשר להסלים אותה."
+          : alreadyPinged
+            ? `כבר נשלחה התראה ל${groupName} עבור הבקשה הזו.`
+            : "לא ניתן להסלים את הבקשה כרגע.",
+      ephemeral: true,
+    });
+  }
+}
+
 async function handleHelpRequestButton(interaction: ButtonInteraction) {
   const [, action, requestId] =
-    interaction.customId.match(/^help-request:(claim|close):(.+)$/) ?? [];
+    interaction.customId.match(
+      /^help-request:(claim|close|admin|owner):(.+)$/,
+    ) ?? [];
   if (!action || !requestId) return;
 
   if (!interaction.guildId) {
@@ -389,14 +509,17 @@ async function handleHelpRequestButton(interaction: ButtonInteraction) {
   }
 
   const expectedAlertChannelId =
-    request.requestType === "voice"
-      ? voiceAlertChannelId
-      : helpAlertChannelId;
+    request.requestType === "voice" ? voiceAlertChannelId : helpAlertChannelId;
   if (interaction.channelId !== expectedAlertChannelId) {
     await interaction.reply({
       content: "אפשר לעדכן את הבקשה רק בחדר ההתראות המתאים.",
       ephemeral: true,
     });
+    return;
+  }
+
+  if (action === "admin" || action === "owner") {
+    await handleRoleEscalationButton(interaction, requestId, action);
     return;
   }
 
@@ -457,6 +580,25 @@ async function initializeChannels() {
   ) {
     throw new Error(
       "חדר !h, ערוץ הקול ושני חדרי ההתראות חייבים להיות באותו שרת.",
+    );
+  }
+
+  const configuredGuild = client.guilds.cache.get(voiceChannel.guildId);
+  if (!configuredGuild) {
+    throw new Error("הבוט לא נמצא בשרת של ערוצי ההתראות.");
+  }
+  const guildRoles = await configuredGuild.roles.fetch();
+  const configuredRoleIds = [
+    ...baseAlertRoleIds,
+    ...adminRoleIds,
+    ...ownerRoleIds,
+  ];
+  const missingRoleIds = [...new Set(configuredRoleIds)].filter(
+    (roleId) => !guildRoles.has(roleId),
+  );
+  if (missingRoleIds.length > 0) {
+    throw new Error(
+      `תפקידים אלה לא נמצאו בשרת: ${missingRoleIds.join(", ")}`,
     );
   }
 

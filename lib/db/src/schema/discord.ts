@@ -52,6 +52,8 @@ export const discordHelpRequests = pgTable("discord_help_requests", {
     .default("open"),
   claimedBy: text("claimed_by"),
   closedBy: text("closed_by"),
+  adminPingedAt: timestamp("admin_pinged_at", { withTimezone: true }),
+  ownerPingedAt: timestamp("owner_pinged_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

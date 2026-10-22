@@ -13,7 +13,7 @@ A TypeScript Discord bot starter with slash commands, secure token configuration
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required secret: `DISCORD_BOT_TOKEN`
-- Required env: `DISCORD_HELP_VOICE_CHANNEL_ID`, `DISCORD_HELP_REQUEST_CHANNEL_ID`, `DISCORD_HELP_ALERT_CHANNEL_ID`, `DISCORD_VOICE_ALERT_CHANNEL_ID`
+- Required env: `DISCORD_HELP_VOICE_CHANNEL_ID`, `DISCORD_HELP_REQUEST_CHANNEL_ID`, `DISCORD_HELP_ALERT_CHANNEL_ID`, `DISCORD_VOICE_ALERT_CHANNEL_ID`, `DISCORD_BASE_ALERT_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS`, `DISCORD_OWNER_ROLE_IDS`
 - Optional env: `DISCORD_GUILD_ID` — register slash commands to a test server for immediate availability; otherwise commands are registered globally
 
 ## Stack
@@ -39,7 +39,7 @@ A TypeScript Discord bot starter with slash commands, secure token configuration
 
 ## Product
 
-- Hebrew help requests, staff alerts, XP, message and voice tracking, and `/rank`.
+- Hebrew help requests, role-based staff alerts and escalations, XP, message and voice tracking, and `/rank`.
 
 ## User preferences
 

@@ -1,4 +1,4 @@
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   discordHelpRequests,
@@ -25,6 +25,7 @@ export const LEADERBOARD_LIMIT = 10;
 
 export type HelpRequest = typeof discordHelpRequests.$inferSelect;
 export type NewHelpRequest = typeof discordHelpRequests.$inferInsert;
+export type HelpRequestEscalation = "admin" | "owner";
 
 export async function createHelpRequest(
   request: NewHelpRequest,
@@ -87,6 +88,76 @@ export async function closeHelpRequest(
     )
     .returning();
   return request ?? null;
+}
+
+export async function pingHelpRequestRole(
+  requestId: string,
+  guildId: string,
+  escalation: HelpRequestEscalation,
+): Promise<HelpRequest | null> {
+  const now = new Date();
+
+  if (escalation === "admin") {
+    const [request] = await db
+      .update(discordHelpRequests)
+      .set({ adminPingedAt: now, updatedAt: now })
+      .where(
+        and(
+          eq(discordHelpRequests.requestId, requestId),
+          eq(discordHelpRequests.guildId, guildId),
+          ne(discordHelpRequests.status, "closed"),
+          isNull(discordHelpRequests.adminPingedAt),
+        ),
+      )
+      .returning();
+    return request ?? null;
+  }
+
+  const [request] = await db
+    .update(discordHelpRequests)
+    .set({ ownerPingedAt: now, updatedAt: now })
+    .where(
+      and(
+        eq(discordHelpRequests.requestId, requestId),
+        eq(discordHelpRequests.guildId, guildId),
+        ne(discordHelpRequests.status, "closed"),
+        isNull(discordHelpRequests.ownerPingedAt),
+      ),
+    )
+    .returning();
+  return request ?? null;
+}
+
+export async function rollbackHelpRequestRolePing(
+  request: HelpRequest,
+  escalation: HelpRequestEscalation,
+) {
+  if (escalation === "admin" && request.adminPingedAt) {
+    await db
+      .update(discordHelpRequests)
+      .set({ adminPingedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(discordHelpRequests.requestId, request.requestId),
+          eq(discordHelpRequests.guildId, request.guildId),
+          eq(discordHelpRequests.adminPingedAt, request.adminPingedAt),
+        ),
+      );
+    return;
+  }
+
+  if (escalation === "owner" && request.ownerPingedAt) {
+    await db
+      .update(discordHelpRequests)
+      .set({ ownerPingedAt: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(discordHelpRequests.requestId, request.requestId),
+          eq(discordHelpRequests.guildId, request.guildId),
+          eq(discordHelpRequests.ownerPingedAt, request.ownerPingedAt),
+        ),
+      );
+  }
 }
 
 export async function deleteHelpRequest(requestId: string) {
