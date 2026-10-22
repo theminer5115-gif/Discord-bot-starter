@@ -1,33 +1,42 @@
 # Discord Bot Starter
 
-A small TypeScript bot that connects through Discord's Gateway and provides
-`/ping` and `/about` slash commands. It requests only the `Guilds` gateway
-intent; it does not read message content or require privileged intents.
+A Hebrew-first Discord community helper with `!h` support requests, staff
+notifications for monitored voice-channel joins, persistent message and voice
+stats, XP, and `/rank`.
 
 ## Setup
 
 1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
-2. Add a bot user and copy its token into the Replit Secret named
-   `DISCORD_BOT_TOKEN`. Never put the token in source files or chat.
+2. Under **Bot → Privileged Gateway Intents**, enable **Message Content Intent**
+   so the bot can recognize `!h`. The bot does not save message text.
 3. Invite the bot using the OAuth2 URL generator with the `bot` and
-   `applications.commands` scopes. Grant only the server permissions it needs,
-   such as View Channels and Send Messages.
-4. Optionally set `DISCORD_GUILD_ID` to a test server ID. Guild commands appear
-   quickly; without it, commands are registered globally and may take time to
-   appear.
+   `applications.commands` scopes. Grant only the required permissions:
+   View Channels, Send Messages, Embed Links, and Use Application Commands.
+4. Add the bot token as the Replit Secret `DISCORD_BOT_TOKEN`. The channel IDs
+   are configured with `DISCORD_HELP_VOICE_CHANNEL_ID` and
+   `DISCORD_STAFF_CHANNEL_ID`.
 5. Start the **Discord Bot** workflow, or run:
 
    ```sh
    pnpm --filter @workspace/discord-bot run dev
    ```
 
-The bot updates only its `/ping` and `/about` command definitions and leaves
-other commands registered to the application untouched.
+The bot updates its `/ping`, `/about`, and `/rank` command definitions and
+leaves other commands registered to the application untouched. The persistent
+stats are stored in the project's PostgreSQL database.
 
 ## Commands
 
-- `/ping` — replies with the current Gateway latency.
-- `/about` — describes the starter bot.
+- `!h [פרטים]` — sends a Hebrew help embed to the configured staff channel,
+  mentions online staff, and enforces a 10-second per-user cooldown.
+- `/rank` — privately shows a member's message count, monitored voice time, XP,
+  and level.
+- `/ping` and `/about` — Hebrew bot status and information replies.
+
+The bot counts non-bot messages throughout the server. Message XP is 5 per
+member per 60 seconds; voice XP is 1 per minute in the configured voice
+channel. Voice time is tracked only in that channel. Joining it sends an
+`@here` embed to the configured staff channel.
 
 Add new slash command definitions in `src/commands.ts` and handle them in
 `src/index.ts`.

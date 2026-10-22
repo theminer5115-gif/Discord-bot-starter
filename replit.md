@@ -7,12 +7,14 @@ A TypeScript Discord bot starter with slash commands, secure token configuration
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm --filter @workspace/discord-bot run dev` — run the Discord bot
 - `pnpm --filter @workspace/discord-bot run typecheck` — check the bot package
+- `pnpm --filter @workspace/db run push` — apply development database schema changes
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required secret: `DISCORD_BOT_TOKEN`
-- Optional env: `DISCORD_GUILD_ID` — register starter slash commands to a test server for immediate availability; otherwise commands are registered globally
+- Required env: `DISCORD_HELP_VOICE_CHANNEL_ID`, `DISCORD_STAFF_CHANNEL_ID`
+- Optional env: `DISCORD_GUILD_ID` — register slash commands to a test server for immediate availability; otherwise commands are registered globally
 
 ## Stack
 
@@ -25,17 +27,19 @@ A TypeScript Discord bot starter with slash commands, secure token configuration
 
 ## Where things live
 
-- `bots/discord-bot/src` — Discord client, slash command handlers, and command registration
+- `bots/discord-bot/src` — Discord client, Hebrew help/rank handlers, and persistent activity tracking
 - `bots/discord-bot/README.md` — Discord application setup and operating instructions
+- `lib/db/src/schema/discord.ts` — persistent Discord member stats and voice sessions
 
 ## Architecture decisions
 
 - The bot runs as a persistent worker rather than a web artifact.
-- Slash command synchronization updates only the starter commands and preserves other commands.
+- Slash command synchronization updates only its own commands and preserves other commands.
+- XP and activity totals use the shared PostgreSQL database; voice sessions checkpoint periodically.
 
 ## Product
 
-- Starter `/ping` and `/about` slash commands.
+- Hebrew help requests, staff alerts, XP, message and voice tracking, and `/rank`.
 
 ## User preferences
 

@@ -3,10 +3,13 @@ import { SlashCommandBuilder } from "discord.js";
 export const starterCommands = [
   new SlashCommandBuilder()
     .setName("ping")
-    .setDescription("Check whether the bot is online"),
+    .setDescription("בדיקת זמינות הבוט"),
   new SlashCommandBuilder()
     .setName("about")
-    .setDescription("Learn what this bot can do"),
+    .setDescription("מידע על הבוט ועל הפקודות שלו"),
+  new SlashCommandBuilder()
+    .setName("rank")
+    .setDescription("הצגת נתוני ההודעות, הזמן הקולי והניסיון שלך"),
 ];
 
 export async function registerStarterCommands(

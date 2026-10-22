@@ -38,3 +38,9 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+DISCORD_HELP_VOICE_CHANNEL_ID = "1562897289255583816"
+DISCORD_STAFF_CHANNEL_ID = "1562897075316854905"
