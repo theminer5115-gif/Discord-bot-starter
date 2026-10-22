@@ -1,18 +1,29 @@
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   Client,
   EmbedBuilder,
   Events,
   GatewayIntentBits,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Message,
   type MessageCreateOptions,
 } from "discord.js";
+import { randomUUID } from "node:crypto";
 import { registerStarterCommands, starterCommands } from "./commands.js";
 import {
   checkpointAllVoiceSessions,
   checkpointVoiceSession,
+  claimHelpRequest,
+  closeHelpRequest,
+  createHelpRequest,
+  deleteHelpRequest,
   getGuildLeaderboard,
+  getHelpRequest,
   getMemberRankStats,
+  type HelpRequest,
   LEADERBOARD_LIMIT,
   recordMessage,
   resetVoiceSessions,
@@ -175,7 +186,7 @@ function formatVoiceTime(totalSeconds: number) {
 
 type StaffChannel = {
   guildId: string;
-  send: (options: MessageCreateOptions) => Promise<unknown>;
+  send: (options: MessageCreateOptions) => Promise<Message>;
 };
 
 async function getStaffChannel(): Promise<StaffChannel> {
@@ -190,6 +201,106 @@ async function getStaffChannel(): Promise<StaffChannel> {
     throw new Error("ערוץ ההתראות לצוות אינו ערוץ טקסט זמין.");
   }
   return channel as StaffChannel;
+}
+
+function buildHelpRequestEmbed(request: HelpRequest) {
+  const statusLabel = {
+    open: "ממתינה לטיפול",
+    claimed: "בטיפול",
+    closed: "נסגרה",
+  }[request.status];
+  const embed = new EmbedBuilder()
+    .setColor(
+      request.status === "closed"
+        ? 0x2ecc71
+        : request.status === "claimed"
+          ? 0xf1c40f
+          : 0xe74c3c,
+    )
+    .setTitle(
+      request.requestType === "voice"
+        ? "חבר/ת קהילה זקוק/ה לעזרת צוות"
+        : "בקשת עזרה מהקהילה",
+    )
+    .setDescription(
+      `**חבר/ת הקהילה:** <@${request.requesterId}>\n**ערוץ:** <#${request.sourceChannelId}>`,
+    )
+    .addFields(
+      { name: "פרטים", value: request.details || "לא נמסרו פרטים נוספים." },
+      { name: "סטטוס", value: statusLabel, inline: true },
+      {
+        name: "נלקחה לטיפול על ידי",
+        value: request.claimedBy ? `<@${request.claimedBy}>` : "עדיין לא נלקחה",
+        inline: true,
+      },
+    );
+
+  if (request.sourceMessageUrl) {
+    embed.addFields({
+      name: "הודעה",
+      value: `[פתיחת ההודעה בשרת](${request.sourceMessageUrl})`,
+    });
+  }
+  if (request.closedBy) {
+    embed.addFields({
+      name: "נסגרה על ידי",
+      value: `<@${request.closedBy}>`,
+      inline: true,
+    });
+  }
+
+  return embed.setTimestamp(request.createdAt);
+}
+
+function buildHelpRequestButtons(request: HelpRequest) {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`help-request:claim:${request.requestId}`)
+      .setLabel("לקחת לטיפול")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(request.status !== "open"),
+    new ButtonBuilder()
+      .setCustomId(`help-request:close:${request.requestId}`)
+      .setLabel("סגירת בקשה")
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(request.status === "closed"),
+  );
+}
+
+async function sendHelpRequestAlert(input: {
+  guildId: string;
+  requesterId: string;
+  sourceChannelId: string;
+  sourceMessageUrl?: string;
+  requestType: "message" | "voice";
+  details: string;
+}) {
+  const request = await createHelpRequest({
+    requestId: randomUUID(),
+    ...input,
+    sourceMessageUrl: input.sourceMessageUrl ?? null,
+    status: "open",
+    claimedBy: null,
+    closedBy: null,
+  });
+
+  try {
+    const staffChannel = await getStaffChannel();
+    if (staffChannel.guildId !== request.guildId) {
+      throw new Error("בקשת העזרה נשלחה משרת שאינו שרת הצוות המוגדר.");
+    }
+    await staffChannel.send({
+      content: "@here",
+      embeds: [buildHelpRequestEmbed(request)],
+      components: [buildHelpRequestButtons(request)],
+      allowedMentions: { parse: ["everyone"] },
+    });
+  } catch (error) {
+    await deleteHelpRequest(request.requestId).catch((deleteError) => {
+      console.error("מחיקת בקשת עזרה שלא נשלחה נכשלה:", deleteError);
+    });
+    throw error;
+  }
 }
 
 async function handleHelpRequest(message: Message) {
@@ -209,32 +320,14 @@ async function handleHelpRequest(message: Message) {
   helpCooldowns.set(cooldownKey, now + HELP_COOLDOWN_MS);
 
   try {
-    const staffChannel = await getStaffChannel();
     const reason = message.content.slice(2).trim().slice(0, 1000);
-    const embed = new EmbedBuilder()
-      .setColor(0xe74c3c)
-      .setTitle("בקשת עזרה מהקהילה")
-      .setDescription(
-        `**חבר/ת הקהילה:** <@${message.author.id}>\n**ערוץ:** <#${message.channelId}>`,
-      )
-      .addFields({
-        name: "פרטים",
-        value: reason || "לא נמסרו פרטים נוספים.",
-      })
-      .addFields({
-        name: "הודעה",
-        value: `[פתיחת ההודעה בשרת](${message.url})`,
-      })
-      .setTimestamp();
-
-    await staffChannel.send({
-      content: "@here",
-      embeds: [embed],
-      allowedMentions: { parse: ["everyone"] },
-    });
-    await message.reply({
-      content: "בקשת העזרה נשלחה לצוות. הצוות יגיע אליך בהקדם.",
-      allowedMentions: { repliedUser: false },
+    await sendHelpRequestAlert({
+      guildId: message.guild!.id,
+      requesterId: message.author.id,
+      sourceChannelId: message.channelId,
+      sourceMessageUrl: message.url,
+      requestType: "message",
+      details: reason || "לא נמסרו פרטים נוספים.",
     });
   } catch (error) {
     helpCooldowns.delete(cooldownKey);
@@ -242,6 +335,72 @@ async function handleHelpRequest(message: Message) {
     await message.reply({
       content: "לא הצלחתי לשלוח את הבקשה לצוות. כדאי לפנות לאחד מאנשי הצוות.",
       allowedMentions: { repliedUser: false },
+    });
+    return;
+  }
+
+  try {
+    await message.reply({
+      content: "בקשת העזרה נשלחה לצוות. הצוות יגיע אליך בהקדם.",
+      allowedMentions: { repliedUser: false },
+    });
+  } catch (error) {
+    console.error("אישור שליחת בקשת העזרה נכשל:", error);
+  }
+}
+
+async function handleHelpRequestButton(interaction: ButtonInteraction) {
+  const [, action, requestId] =
+    interaction.customId.match(/^help-request:(claim|close):(.+)$/) ?? [];
+  if (!action || !requestId) return;
+
+  if (interaction.channelId !== staffChannelId || !interaction.guildId) {
+    await interaction.reply({
+      content: "אפשר לעדכן בקשות עזרה רק בערוץ הצוות.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const request = await getHelpRequest(requestId);
+  if (!request || request.guildId !== interaction.guildId) {
+    await interaction.reply({
+      content: "בקשת העזרה לא נמצאה.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const updatedRequest =
+    action === "claim"
+      ? await claimHelpRequest(requestId, interaction.guildId, interaction.user.id)
+      : await closeHelpRequest(requestId, interaction.guildId, interaction.user.id);
+  const currentRequest =
+    updatedRequest ?? (await getHelpRequest(requestId));
+
+  if (!currentRequest) {
+    await interaction.reply({
+      content: "בקשת העזרה לא נמצאה.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.update({
+    embeds: [buildHelpRequestEmbed(currentRequest)],
+    components: [buildHelpRequestButtons(currentRequest)],
+    allowedMentions: { parse: [] },
+  });
+
+  if (!updatedRequest) {
+    const message =
+      action === "claim" && currentRequest.status === "claimed"
+        ? `הבקשה כבר נלקחה לטיפול על ידי <@${currentRequest.claimedBy}>.`
+        : "הבקשה כבר נסגרה או עודכנה.";
+    await interaction.followUp({
+      content: message,
+      ephemeral: true,
+      allowedMentions: { parse: [] },
     });
   }
 }
@@ -291,6 +450,23 @@ client.once(Events.ClientReady, async (readyClient) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (interaction.isButton()) {
+    if (!interaction.customId.startsWith("help-request:")) return;
+
+    try {
+      await handleHelpRequestButton(interaction);
+    } catch (error) {
+      console.error("עדכון בקשת עזרה נכשל:", error);
+      if (!interaction.replied && !interaction.deferred) {
+        await interaction.reply({
+          content: "עדכון הבקשה נכשל. כדאי לנסות שוב.",
+          ephemeral: true,
+        });
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   try {
@@ -339,19 +515,12 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 
   try {
     await startVoiceSession(newState.guild.id, newState.id);
-    const staffChannel = await getStaffChannel();
-    const embed = new EmbedBuilder()
-      .setColor(0xf1c40f)
-      .setTitle("חבר/ת קהילה זקוק/ה לעזרת צוות")
-      .setDescription(
-        `**חבר/ת הקהילה:** <@${newState.id}>\n**ערוץ קולי:** <#${voiceChannelId}>\nהמשתמש/ת הצטרף/ה וממתין/ה לעזרת צוות.`,
-      )
-      .setTimestamp();
-
-    await staffChannel.send({
-      content: "@here",
-      embeds: [embed],
-      allowedMentions: { parse: ["everyone"] },
+    await sendHelpRequestAlert({
+      guildId: newState.guild.id,
+      requesterId: newState.id,
+      sourceChannelId: voiceChannelId!,
+      requestType: "voice",
+      details: `המשתמש/ת הצטרף/ה לערוץ הקולי וממתין/ה לעזרת צוות: <#${voiceChannelId}>.`,
     });
   } catch (error) {
     console.error("שליחת התראת כניסה לערוץ הקולי נכשלה:", error);

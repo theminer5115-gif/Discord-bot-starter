@@ -1,6 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
+  discordHelpRequests,
   discordMemberStats,
   discordVoiceSessions,
 } from "@workspace/db/schema";
@@ -21,6 +22,83 @@ export interface GuildLeaderboardEntry {
 }
 
 export const LEADERBOARD_LIMIT = 10;
+
+export type HelpRequest = typeof discordHelpRequests.$inferSelect;
+export type NewHelpRequest = typeof discordHelpRequests.$inferInsert;
+
+export async function createHelpRequest(
+  request: NewHelpRequest,
+): Promise<HelpRequest> {
+  const [createdRequest] = await db
+    .insert(discordHelpRequests)
+    .values(request)
+    .returning();
+
+  if (!createdRequest) {
+    throw new Error("לא ניתן היה לשמור את בקשת העזרה.");
+  }
+  return createdRequest;
+}
+
+export async function getHelpRequest(
+  requestId: string,
+): Promise<HelpRequest | null> {
+  const [request] = await db
+    .select()
+    .from(discordHelpRequests)
+    .where(eq(discordHelpRequests.requestId, requestId))
+    .limit(1);
+  return request ?? null;
+}
+
+export async function claimHelpRequest(
+  requestId: string,
+  guildId: string,
+  claimedBy: string,
+): Promise<HelpRequest | null> {
+  const [request] = await db
+    .update(discordHelpRequests)
+    .set({ status: "claimed", claimedBy, updatedAt: new Date() })
+    .where(
+      and(
+        eq(discordHelpRequests.requestId, requestId),
+        eq(discordHelpRequests.guildId, guildId),
+        eq(discordHelpRequests.status, "open"),
+      ),
+    )
+    .returning();
+  return request ?? null;
+}
+
+export async function closeHelpRequest(
+  requestId: string,
+  guildId: string,
+  closedBy: string,
+): Promise<HelpRequest | null> {
+  const [request] = await db
+    .update(discordHelpRequests)
+    .set({ status: "closed", closedBy, updatedAt: new Date() })
+    .where(
+      and(
+        eq(discordHelpRequests.requestId, requestId),
+        eq(discordHelpRequests.guildId, guildId),
+        ne(discordHelpRequests.status, "closed"),
+      ),
+    )
+    .returning();
+  return request ?? null;
+}
+
+export async function deleteHelpRequest(requestId: string) {
+  await db
+    .delete(discordHelpRequests)
+    .where(
+      and(
+        eq(discordHelpRequests.requestId, requestId),
+        eq(discordHelpRequests.status, "open"),
+      ),
+    );
+}
 
 export async function recordMessage(guildId: string, userId: string) {
   const now = new Date();

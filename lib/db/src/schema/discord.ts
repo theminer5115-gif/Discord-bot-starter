@@ -32,3 +32,30 @@ export const discordVoiceSessions = pgTable(
   },
   (table) => [primaryKey({ columns: [table.guildId, table.userId] })],
 );
+
+export type DiscordHelpRequestStatus = "open" | "claimed" | "closed";
+export type DiscordHelpRequestType = "message" | "voice";
+
+export const discordHelpRequests = pgTable("discord_help_requests", {
+  requestId: text("request_id").primaryKey(),
+  guildId: text("guild_id").notNull(),
+  requesterId: text("requester_id").notNull(),
+  sourceChannelId: text("source_channel_id").notNull(),
+  sourceMessageUrl: text("source_message_url"),
+  requestType: text("request_type")
+    .$type<DiscordHelpRequestType>()
+    .notNull(),
+  details: text("details").notNull(),
+  status: text("status")
+    .$type<DiscordHelpRequestStatus>()
+    .notNull()
+    .default("open"),
+  claimedBy: text("claimed_by"),
+  closedBy: text("closed_by"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
