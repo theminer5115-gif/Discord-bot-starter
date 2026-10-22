@@ -15,6 +15,13 @@ export interface MemberRankStats {
   xp: number;
 }
 
+export interface GuildLeaderboardEntry {
+  userId: string;
+  xp: number;
+}
+
+export const LEADERBOARD_LIMIT = 10;
+
 export async function recordMessage(guildId: string, userId: string) {
   const now = new Date();
   const xpCooldownBoundary = new Date(
@@ -220,4 +227,53 @@ export async function getMemberRankStats(
     voiceSeconds,
     xp,
   };
+}
+
+export async function getGuildLeaderboard(
+  guildId: string,
+  limit = LEADERBOARD_LIMIT,
+  now = new Date(),
+): Promise<GuildLeaderboardEntry[]> {
+  const [memberStats, voiceSessions] = await Promise.all([
+    db
+      .select({
+        userId: discordMemberStats.userId,
+        xp: discordMemberStats.xp,
+      })
+      .from(discordMemberStats)
+      .where(eq(discordMemberStats.guildId, guildId)),
+    db
+      .select({
+        userId: discordVoiceSessions.userId,
+        joinedAt: discordVoiceSessions.joinedAt,
+        xpRemainderSeconds: discordVoiceSessions.xpRemainderSeconds,
+      })
+      .from(discordVoiceSessions)
+      .where(eq(discordVoiceSessions.guildId, guildId)),
+  ]);
+
+  const xpByUser = new Map(
+    memberStats.map(({ userId, xp }) => [userId, xp]),
+  );
+
+  for (const session of voiceSessions) {
+    const elapsedSeconds = Math.max(
+      0,
+      Math.floor((now.getTime() - session.joinedAt.getTime()) / 1000),
+    );
+    const currentVoiceXp =
+      Math.floor(
+        (session.xpRemainderSeconds + elapsedSeconds) / 60,
+      ) * XP_PER_VOICE_MINUTE;
+
+    xpByUser.set(
+      session.userId,
+      (xpByUser.get(session.userId) ?? 0) + currentVoiceXp,
+    );
+  }
+
+  return [...xpByUser.entries()]
+    .map(([userId, xp]) => ({ userId, xp }))
+    .sort((a, b) => b.xp - a.xp || a.userId.localeCompare(b.userId))
+    .slice(0, Math.max(0, Math.floor(limit)));
 }

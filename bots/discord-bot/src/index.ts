@@ -11,7 +11,9 @@ import { registerStarterCommands, starterCommands } from "./commands.js";
 import {
   checkpointAllVoiceSessions,
   checkpointVoiceSession,
+  getGuildLeaderboard,
   getMemberRankStats,
+  LEADERBOARD_LIMIT,
   recordMessage,
   resetVoiceSessions,
   startVoiceSession,
@@ -56,7 +58,8 @@ async function handleCommand(interaction: ChatInputCommandInteraction) {
 
   if (interaction.commandName === "about") {
     await interaction.reply({
-      content: "אני עוזר/ת לקהילה: אפשר לבקש עזרה עם ‎!h ולבדוק נתונים עם ‎/rank.",
+      content:
+        "אני עוזר/ת לקהילה: אפשר לבקש עזרה עם ‎!h, לבדוק נתונים עם ‎/rank ולראות את טבלת המובילים עם ‎/leaderboard.",
       ephemeral: true,
     });
     return;
@@ -112,6 +115,45 @@ async function handleCommand(interaction: ChatInputCommandInteraction) {
           .setTimestamp(),
       ],
       ephemeral: true,
+    });
+    return;
+  }
+
+  if (interaction.commandName === "leaderboard") {
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: "הפקודה זמינה בתוך שרת בלבד.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const entries = await getGuildLeaderboard(
+      interaction.guildId,
+      LEADERBOARD_LIMIT,
+    );
+    const description =
+      entries.length > 0
+        ? entries
+            .map(
+              ({ userId, xp }, index) =>
+                `**${index + 1}.** <@${userId}> — **${xp.toLocaleString("he-IL")} XP** · רמה ${Math.floor(xp / 100) + 1}`,
+            )
+            .join("\n")
+        : "עדיין אין נתוני XP להצגה.";
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle("טבלת מובילי ה־XP")
+          .setDescription(description)
+          .setFooter({
+            text: `מוצגים עד ${LEADERBOARD_LIMIT} חברים לפי XP`,
+          })
+          .setTimestamp(),
+      ],
+      allowedMentions: { parse: [] },
     });
   }
 }

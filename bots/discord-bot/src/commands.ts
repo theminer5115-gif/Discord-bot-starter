@@ -10,6 +10,9 @@ export const starterCommands = [
   new SlashCommandBuilder()
     .setName("rank")
     .setDescription("הצגת נתוני ההודעות, הזמן הקולי והניסיון שלך"),
+  new SlashCommandBuilder()
+    .setName("leaderboard")
+    .setDescription("הצגת עשרת המובילים בנקודות הניסיון של השרת"),
 ];
 
 export async function registerStarterCommands(
