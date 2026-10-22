@@ -12,10 +12,11 @@ stats, XP, and `/rank`.
 3. Invite the bot using the OAuth2 URL generator with the `bot` and
    `applications.commands` scopes. Grant only the required permissions:
    View Channels, Send Messages, Embed Links, and Use Application Commands.
-4. Add the bot token as the Replit Secret `DISCORD_BOT_TOKEN`. Configure three
-   separate channels: `DISCORD_HELP_REQUEST_CHANNEL_ID` for `!h`,
-   `DISCORD_HELP_VOICE_CHANNEL_ID` for voice monitoring, and
-   `DISCORD_STAFF_CHANNEL_ID` for staff alerts.
+4. Add the bot token as the Replit Secret `DISCORD_BOT_TOKEN`. Configure
+   separate channels for `DISCORD_HELP_REQUEST_CHANNEL_ID` (`!h` input),
+   `DISCORD_HELP_ALERT_CHANNEL_ID` (`!h` alerts),
+   `DISCORD_HELP_VOICE_CHANNEL_ID` (voice monitoring), and
+   `DISCORD_VOICE_ALERT_CHANNEL_ID` (voice alerts).
 5. Start the **Discord Bot** workflow, or run:
 
    ```sh
@@ -29,7 +30,7 @@ stats are stored in the project's PostgreSQL database.
 ## Commands
 
 - `!h [פרטים]` — works only in the configured help-request text channel and
-  sends a Hebrew help embed to the configured staff channel,
+  sends a Hebrew help embed to its separate alert channel,
   mentions online staff, and enforces a 10-second per-user cooldown.
 - `/rank` — privately shows a member's message count, monitored voice time, XP,
   and level.
@@ -38,7 +39,7 @@ stats are stored in the project's PostgreSQL database.
 The bot counts non-bot messages throughout the server. Message XP is 5 per
 member per 60 seconds; voice XP is 1 per minute in the configured voice
 channel. Voice time is tracked only in that channel. Joining it sends an
-`@here` embed to the configured staff channel.
+`@here` embed to its separate voice-alert channel.
 
 Add new slash command definitions in `src/commands.ts` and handle them in
 `src/index.ts`.

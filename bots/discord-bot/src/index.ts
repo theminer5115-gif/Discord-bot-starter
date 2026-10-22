@@ -34,7 +34,8 @@ const token = process.env.DISCORD_BOT_TOKEN?.trim();
 const guildId = process.env.DISCORD_GUILD_ID?.trim();
 const voiceChannelId = process.env.DISCORD_HELP_VOICE_CHANNEL_ID?.trim();
 const helpRequestChannelId = process.env.DISCORD_HELP_REQUEST_CHANNEL_ID?.trim();
-const staffChannelId = process.env.DISCORD_STAFF_CHANNEL_ID?.trim();
+const helpAlertChannelId = process.env.DISCORD_HELP_ALERT_CHANNEL_ID?.trim();
+const voiceAlertChannelId = process.env.DISCORD_VOICE_ALERT_CHANNEL_ID?.trim();
 const HELP_COOLDOWN_MS = 10_000;
 const helpCooldowns = new Map<string, number>();
 
@@ -44,10 +45,19 @@ if (!token) {
   );
 }
 
-if (!voiceChannelId || !helpRequestChannelId || !staffChannelId) {
+if (
+  !voiceChannelId ||
+  !helpRequestChannelId ||
+  !helpAlertChannelId ||
+  !voiceAlertChannelId
+) {
   throw new Error(
-    "Missing Discord channel configuration. Set DISCORD_HELP_VOICE_CHANNEL_ID, DISCORD_HELP_REQUEST_CHANNEL_ID, and DISCORD_STAFF_CHANNEL_ID.",
+    "Missing Discord channel configuration. Set the voice, help-request, help-alert, and voice-alert channel IDs.",
   );
+}
+
+if (helpAlertChannelId === voiceAlertChannelId) {
+  throw new Error("ערוץ ההתראות של !h ושל הקול חייבים להיות שונים.");
 }
 
 const client = new Client({
@@ -190,8 +200,8 @@ type StaffChannel = {
   send: (options: MessageCreateOptions) => Promise<Message>;
 };
 
-async function getStaffChannel(): Promise<StaffChannel> {
-  const channel = await client.channels.fetch(staffChannelId!);
+async function getAlertChannel(channelId: string): Promise<StaffChannel> {
+  const channel = await client.channels.fetch(channelId);
   if (
     !channel?.isTextBased() ||
     !("guildId" in channel) ||
@@ -203,6 +213,9 @@ async function getStaffChannel(): Promise<StaffChannel> {
   }
   return channel as StaffChannel;
 }
+
+const getHelpAlertChannel = () => getAlertChannel(helpAlertChannelId!);
+const getVoiceAlertChannel = () => getAlertChannel(voiceAlertChannelId!);
 
 function buildHelpRequestEmbed(request: HelpRequest) {
   const statusLabel = {
@@ -286,11 +299,14 @@ async function sendHelpRequestAlert(input: {
   });
 
   try {
-    const staffChannel = await getStaffChannel();
-    if (staffChannel.guildId !== request.guildId) {
-      throw new Error("בקשת העזרה נשלחה משרת שאינו שרת הצוות המוגדר.");
+    const alertChannel =
+      request.requestType === "voice"
+        ? await getVoiceAlertChannel()
+        : await getHelpAlertChannel();
+    if (alertChannel.guildId !== request.guildId) {
+      throw new Error("ההתראה נשלחה מערוץ שאינו שייך לשרת המוגדר.");
     }
-    await staffChannel.send({
+    await alertChannel.send({
       content: "@here",
       embeds: [buildHelpRequestEmbed(request)],
       components: [buildHelpRequestButtons(request)],
@@ -355,9 +371,9 @@ async function handleHelpRequestButton(interaction: ButtonInteraction) {
     interaction.customId.match(/^help-request:(claim|close):(.+)$/) ?? [];
   if (!action || !requestId) return;
 
-  if (interaction.channelId !== staffChannelId || !interaction.guildId) {
+  if (!interaction.guildId) {
     await interaction.reply({
-      content: "אפשר לעדכן בקשות עזרה רק בערוץ הצוות.",
+      content: "אפשר לעדכן בקשות עזרה בתוך השרת בלבד.",
       ephemeral: true,
     });
     return;
@@ -367,6 +383,18 @@ async function handleHelpRequestButton(interaction: ButtonInteraction) {
   if (!request || request.guildId !== interaction.guildId) {
     await interaction.reply({
       content: "בקשת העזרה לא נמצאה.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const expectedAlertChannelId =
+    request.requestType === "voice"
+      ? voiceAlertChannelId
+      : helpAlertChannelId;
+  if (interaction.channelId !== expectedAlertChannelId) {
+    await interaction.reply({
+      content: "אפשר לעדכן את הבקשה רק בחדר ההתראות המתאים.",
       ephemeral: true,
     });
     return;
@@ -409,7 +437,8 @@ async function handleHelpRequestButton(interaction: ButtonInteraction) {
 async function initializeChannels() {
   const voiceChannel = await client.channels.fetch(voiceChannelId!);
   const helpRequestChannel = await client.channels.fetch(helpRequestChannelId!);
-  const staffChannel = await getStaffChannel();
+  const helpAlertChannel = await getHelpAlertChannel();
+  const voiceAlertChannel = await getVoiceAlertChannel();
 
   if (!voiceChannel?.isVoiceBased()) {
     throw new Error("המזהה שהוגדר לערוץ הקולי אינו מצביע על ערוץ קולי.");
@@ -423,10 +452,11 @@ async function initializeChannels() {
   }
   if (
     helpRequestChannel.guildId !== voiceChannel.guildId ||
-    staffChannel.guildId !== voiceChannel.guildId
+    helpAlertChannel.guildId !== voiceChannel.guildId ||
+    voiceAlertChannel.guildId !== voiceChannel.guildId
   ) {
     throw new Error(
-      "חדר !h, ערוץ הקול וחדר הצוות חייבים להיות באותו שרת.",
+      "חדר !h, ערוץ הקול ושני חדרי ההתראות חייבים להיות באותו שרת.",
     );
   }
 
