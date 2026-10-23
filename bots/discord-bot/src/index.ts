@@ -12,6 +12,7 @@ import {
   type MessageCreateOptions,
 } from "discord.js";
 import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
 import { registerStarterCommands, starterCommands } from "./commands.js";
 import {
   checkpointAllVoiceSessions,
@@ -84,6 +85,32 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.MessageContent,
   ],
+});
+
+const healthPort = Number(
+  process.env.DISCORD_BOT_HEALTH_PORT ?? process.env.PORT ?? "8099",
+);
+if (!Number.isInteger(healthPort) || healthPort < 1 || healthPort > 65_535) {
+  throw new Error("מזהה הפורט של בדיקת בריאות הבוט אינו תקין.");
+}
+
+const healthServer = createServer((request, response) => {
+  const requestPath = request.url?.split("?")[0];
+  if (request.method !== "GET" || requestPath !== "/healthz") {
+    response.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ status: "not_found" }));
+    return;
+  }
+
+  const ready = client.isReady();
+  response.writeHead(ready ? 200 : 503, {
+    "cache-control": "no-store",
+    "content-type": "application/json; charset=utf-8",
+  });
+  response.end(JSON.stringify({ status: ready ? "ok" : "not_ready" }));
+});
+healthServer.listen(healthPort, "0.0.0.0", () => {
+  console.info(`בדיקת הבריאות של הבוט מאזינה בפורט ${healthPort}.`);
 });
 
 async function handleCommand(interaction: ChatInputCommandInteraction) {
@@ -729,6 +756,7 @@ async function shutdown() {
   } catch (error) {
     console.error("שמירת נתוני השיחה הקולית לפני עצירה נכשלה:", error);
   }
+  await new Promise<void>((resolve) => healthServer.close(() => resolve()));
   client.destroy();
   process.exit(0);
 }

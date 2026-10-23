@@ -27,6 +27,19 @@ stats, XP, and `/rank`.
    pnpm --filter @workspace/discord-bot run dev
    ```
 
+## 24/7 operation and UptimeRobot
+
+The bot's public health check is `/bot/healthz` on the published app URL. It
+returns HTTP 200 only while the Discord client is ready and HTTP 503 otherwise.
+The bot and API are configured as separate services in the Reserved VM
+deployment, so the existing API service is preserved.
+
+To monitor the bot, create an HTTP(S) monitor in UptimeRobot for
+`https://<published-domain>/bot/healthz` and attach a Discord alert contact to
+the monitor. Create that alert contact using a Discord channel webhook in
+UptimeRobot; keep the webhook URL private and do not commit it to the repo.
+UptimeRobot sends alerts but does not keep the bot process running.
+
 The bot updates its `/ping`, `/about`, and `/rank` command definitions and
 leaves other commands registered to the application untouched. The persistent
 stats are stored in the project's PostgreSQL database.

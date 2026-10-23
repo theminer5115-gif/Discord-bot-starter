@@ -9,12 +9,12 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@types/node": "catalog:",
-    "tsx": "catalog:"
+    "@types/node": "catalog:"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",
     "discord.js": "^14.27.0",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "tsx": "catalog:"
   }
 }

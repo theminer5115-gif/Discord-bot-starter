@@ -15,6 +15,7 @@ A TypeScript Discord bot starter with slash commands, secure token configuration
 - Required secret: `DISCORD_BOT_TOKEN`
 - Required env: `DISCORD_HELP_VOICE_CHANNEL_ID`, `DISCORD_HELP_REQUEST_CHANNEL_ID`, `DISCORD_HELP_ALERT_CHANNEL_ID`, `DISCORD_VOICE_ALERT_CHANNEL_ID`, `DISCORD_BASE_ALERT_ROLE_IDS`, `DISCORD_ADMIN_ROLE_IDS`, `DISCORD_OWNER_ROLE_IDS`
 - Optional env: `DISCORD_GUILD_ID` — register slash commands to a test server for immediate availability; otherwise commands are registered globally
+- The published Reserved VM keeps the API and Discord bot running as separate services. UptimeRobot should monitor `/bot/healthz`, which returns healthy only when the bot is connected to Discord.
 
 ## Stack
 
